@@ -16,7 +16,7 @@ try:
     from audiocraft.data.audio import audio_read, audio_write
     AUDIOCRAFT_AVAILABLE = True
 except ImportError:
-    raise ImportError("audiocraft required: pip install audiocraft")
+    AUDIOCRAFT_AVAILABLE = False
 
 from beat_addicts.device_utils import get_device
 
@@ -54,6 +54,39 @@ GENRE_TEMPLATES = {
         "dark bass house with synth",
     ],
 }
+
+
+def set_seed(seed: int) -> None:
+    """Set random seeds for reproducible generation."""
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+
+
+def detect_profile(profile: str = "auto") -> str:
+    """Resolve runtime profile to cpu/gpu."""
+    profile = (profile or "auto").lower()
+    if profile in {"cpu", "gpu"}:
+        return profile
+    return "gpu" if torch.cuda.is_available() else "cpu"
+
+
+def get_profile_defaults(profile: str) -> dict[str, object]:
+    """Get tuned defaults for the selected hardware profile."""
+    if profile == "gpu":
+        return {
+            "model_size": "medium",
+            "num_tracks": 30,
+            "duration": 12,
+        }
+
+    return {
+        "model_size": "small",
+        "num_tracks": 12,
+        "duration": 8,
+    }
 
 
 def load_audio_samples(audio_dir: str, max_samples: int = 20) -> list[dict]:
@@ -153,13 +186,16 @@ class MusicGenTrainer:
         device_preference: str = "auto",
         adapter_dir: str = "lora_adapters/music_lora",
     ):
+        if not AUDIOCRAFT_AVAILABLE:
+            raise ImportError("audiocraft required for music training: pip install -r requirements-audiocraft.txt")
+
         self.device = get_device(device_preference)
         self.adapter_dir = adapter_dir
 
         print(f"[*] Loading MusicGen ({model_size})...")
         self.available_models = {
             "small": "facebook/musicgen-small",
-            "medium": "facebook/musicgen-large",
+            "medium": "facebook/musicgen-medium",
             "large": "facebook/musicgen-large",
         }
 
@@ -263,10 +299,13 @@ class MusicGenTrainer:
 
 
 def train_music(
-    model_size: str = "small",
+    model_size: Optional[str] = None,
     output_dir: str = "lora_adapters/music_lora",
-    num_tracks: int = 20,
-    duration: int = 10,
+    num_tracks: Optional[int] = None,
+    duration: Optional[int] = None,
+    genre: str = "bass house",
+    seed: int = 42,
+    profile: str = "auto",
 ):
     """Train/adapt MusicGen by generating a dataset.
 
@@ -275,21 +314,40 @@ def train_music(
     further training or evaluation.
     """
 
+    resolved_profile = detect_profile(profile)
+    defaults = get_profile_defaults(resolved_profile)
+
+    model_size = defaults["model_size"] if model_size is None else model_size
+    num_tracks = defaults["num_tracks"] if num_tracks is None else num_tracks
+    duration = defaults["duration"] if duration is None else duration
+
+    set_seed(seed)
+
+    print(f"[*] Training profile: {resolved_profile}")
+
     print("[*] Initializing MusicGen trainer...")
     trainer = MusicGenTrainer(
         model_size=model_size,
         adapter_dir=output_dir,
     )
 
-    # Generate training prompts
+    # Generate single-genre training prompts (or all if explicitly requested)
     print("[*] Creating training prompts...")
     all_prompts = []
-    for genre, prompts in GENRE_TEMPLATES.items():
+
+    genres_to_use = [genre]
+    if genre == "all":
+        genres_to_use = list(GENRE_TEMPLATES.keys())
+
+    for current_genre in genres_to_use:
+        prompts = GENRE_TEMPLATES[current_genre]
         for prompt in prompts:
             all_prompts.append(prompt)
-            # Add variations
-            all_prompts.append(f"{prompt}, warm and cozy")
-            all_prompts.append(f"{prompt}, chill vibes")
+            # Add focused variations for style consistency
+            all_prompts.append(f"{prompt}, tight groove, clean low end")
+            all_prompts.append(f"{prompt}, club-ready rhythm section")
+
+    random.shuffle(all_prompts)
 
     # Limit prompts
     all_prompts = all_prompts[:num_tracks]
@@ -303,9 +361,12 @@ def train_music(
 
     # Save config
     config = {
+        "profile": resolved_profile,
         "model_size": model_size,
         "num_tracks": len(results),
         "duration": duration,
+        "genre": genre,
+        "seed": seed,
         "adapter_dir": output_dir,
     }
     trainer.save_adapter_config(config)
@@ -319,17 +380,31 @@ def train_music(
 if __name__ == "__main__":
     import argparse
 
+    runtime_profile = detect_profile("auto")
+    profile_defaults = get_profile_defaults(runtime_profile)
+
     parser = argparse.ArgumentParser(description="Train MusicGen")
-    parser.add_argument("--model-size", default="small", help="Model size")
+    parser.add_argument("--profile", choices=["auto", "cpu", "gpu"], default="auto", help="Hardware profile")
+    parser.add_argument("--model-size", choices=["small", "medium", "large"], default=None, help=f"Model size (default: {profile_defaults['model_size']})")
     parser.add_argument("--output", default="lora_adapters/music_lora", help="Output dir")
-    parser.add_argument("--num-tracks", type=int, default=20, help="Num tracks")
-    parser.add_argument("--duration", type=int, default=10, help="Track duration")
+    parser.add_argument("--num-tracks", type=int, default=None, help=f"Num tracks (default: {profile_defaults['num_tracks']})")
+    parser.add_argument("--duration", type=int, default=None, help=f"Track duration (default: {profile_defaults['duration']})")
+    parser.add_argument(
+        "--genre",
+        default="bass house",
+        choices=list(GENRE_TEMPLATES.keys()) + ["all"],
+        help="Genre to train/generate. Use 'all' only when intentionally mixing styles.",
+    )
+    parser.add_argument("--seed", type=int, default=42, help="Random seed")
 
     args = parser.parse_args()
 
     train_music(
+        profile=args.profile,
         model_size=args.model_size,
         output_dir=args.output,
         num_tracks=args.num_tracks,
         duration=args.duration,
+        genre=args.genre,
+        seed=args.seed,
     )
