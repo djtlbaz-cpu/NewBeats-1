@@ -1,0 +1,4 @@
+venv/**
+.venv/**
+**/site-packages/**
+lora_adapters/**

@@ -1,11 +1,15 @@
-torch==2.0.1
-torchaudio==2.0.2
-transformers==4.30.0
-librosa==0.10.0
-soundfile==0.12.1
-pydub==0.25.1
-diffusers==0.16.0
-click==8.1.0
-audiocraft
-flask>=3.0.0
-flask-cors>=6.0.0
+# Beat Addicts Dependencies
+# Updated for Python 3.10+ with flexible version matching
+torch>=2.0.0
+torchaudio>=2.0.0
+transformers>=4.31.0
+tokenizers>=0.13.3
+torchmetrics>=1.2.1
+librosa>=0.10.0
+soundfile>=0.12.1
+pydub>=0.25.1
+diffusers>=0.16.0
+click>=8.1.0
+sentence-transformers>=2.2.2
+peft>=0.10.0
+datasets>=2.14.0
