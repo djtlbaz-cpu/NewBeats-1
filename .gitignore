@@ -1,0 +1,41 @@
+# Python cache and bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+.venv310/
+
+# Build and packaging artifacts
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+# Tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+
+# Editor/system files
+.DS_Store
+Thumbs.db
+
+# Project-generated outputs and checkpoints
+output/
+output_fixed_test/
+output_test_err/
+lofi_tracks/
+lora_adapters/
+
+# Generated media/test artifacts
+*.wav
+*.mp3
+
+# Local workspace/tool folders
+.claude/
